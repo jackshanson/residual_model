@@ -25,6 +25,7 @@ def Model(input,seq_lens,mask,dropout,num_outputs,is_train,args):
     parser.add_argument('--filter_dims', default="3", type=str, help='Pattern for filter kx1 dimensions')
     parser.add_argument('--norm_func', default="layer", type=str, help='Which normalisation function to use: layer, batch, none')
     parser.add_argument('--bn_momentum', default=0.99, type=float, help='Batch norm momentum')
+    parser.add_argument('--verbose', default=True, type=bool, help='Print stuff')
     args = parser.parse_args()
     '''
     # or a class like so:
@@ -44,6 +45,7 @@ def Model(input,seq_lens,mask,dropout,num_outputs,is_train,args):
             self.filter_dims = '3'   #must be a string
             self.norm_func = "layer" # or "batch"
             self.bn_momentum = 0.99 #only relevant if self.norm_func = "batch"
+            self.verbse = True
     '''
     #-------------------Model Params
     cnn_size = args.CNN_size
