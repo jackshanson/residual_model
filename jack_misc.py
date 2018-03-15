@@ -133,6 +133,20 @@ def FC_layer(input,netsize,dropout,activation_fn=tf.nn.relu):
     output = tf.nn.dropout(activation_fn(tf.matmul(input,W)+b),dropout)
     return output
 
+def masked_layer_norm(inp,mask):
+    floatmask=tf.cast(tf.expand_dims(mask,2),tf.float32)
+    num = tf.reduce_sum(tf.multiply(inp,floatmask),axis=[1], keep_dims=True)
+    den = tf.reduce_sum(floatmask,axis=1,keep_dims=True)
+    mean = tf.divide(num,den)
+    num = tf.reduce_sum(tf.multiply(tf.square(inp-mean),floatmask),axis=[1], keep_dims=True)
+    var = tf.divide(num,den)
+    variance_epsilon = 1e-12        
+    beta = tf.Variable(tf.constant(0.0, shape=[inp.get_shape().as_list()[-1]]))
+    gamma = tf.Variable(tf.constant(1.0, shape=[inp.get_shape().as_list()[-1]]))
+    norm = tf.nn.batch_normalization(
+        inp, mean, var,variance_epsilon=variance_epsilon,offset=beta,scale=gamma)
+    norm = tf.multiply(norm,floatmask)
+    return norm
 #-------------------------------------------------------------------------------
 #
 #       RESULTS ANALYSIS
