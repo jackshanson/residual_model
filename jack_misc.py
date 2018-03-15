@@ -66,6 +66,7 @@ def spd3_feature_sincos(x,seq,norm_ASA=True):
     angles = np.concatenate([np.sin(angles),np.cos(angles)],1)
     return np.concatenate([ASA,angles,HSEa,HCEprob],1)
 
+#USE THIS TO READ SPIDER3 FILES
 def read_spd33_output(fname,seq):
     with open(fname,'r') as f:
         spd3_features = pd.read_csv(f,delim_whitespace=True).values[:,3:].astype(float)
@@ -74,6 +75,7 @@ def read_spd33_output(fname,seq):
         raise ValueError('Spider3 file is in wrong format or incorrect!')
     return tmp_spd3
 
+#Non standard SPIDER-3 functions
 def read_spd33_third_iteration(fname,seq):
     with open(fname,'r') as f:
         spd3_features = pd.read_csv(f,delim_whitespace=True,skiprows=1,header=None).values[:,1:].astype(float)
@@ -81,7 +83,7 @@ def read_spd33_third_iteration(fname,seq):
     if tmp_spd3.shape[0] != len(seq):
         raise ValueError('Spider3 file is in wrong format or incorrect!')
     return tmp_spd3
-
+#Non standard SPIDER-3 functions
 def read_spd33_features(fnameclass,fnamereg,seq):
     with open(fnameclass,'r') as f:
         spd3_class = pd.read_csv(f,delim_whitespace=True,header=None,skiprows=1).values.astype(float)
@@ -110,6 +112,30 @@ def read_omega_file(fname):
     omega = np.array(contents[3].split()).astype(float)
     return AA, omega
 
+def read_fasta_file(fname):
+    with open(fname,'r') as f:
+        AA = f.read().splitlines()[1]
+    return AA
+
+def read_seq_file(fname):
+    with open(fname,'r') as f:
+        AA = f.read()
+    return AA
+
+def read_disorder_file(fname,seq):
+    with open(fname,'r') as f:
+        do = np.array([i for i in f.read().splitlines()[0]])
+    if do.shape[0] != len(seq):
+        raise ValueError('Disorder file and sequence different lengths!')
+    do_ret = np.ones(do.shape)*-1
+    do_ret[do=='O'] = 0
+    do_ret[do=='-'] = 0
+    do_ret[do=='0'] = 0
+    do_ret[do=='D'] = 1 #some files use D
+    do_ret[do=='+'] = 1 #some files use +
+    do_ret[do=='1'] = 1 #some files use 1  -> MobiDB
+    return do_ret
+
 #-------------------------------------------------------------------------------
 #
 #       MODEL FUNCTIONS
@@ -133,20 +159,22 @@ def FC_layer(input,netsize,dropout,activation_fn=tf.nn.relu):
     output = tf.nn.dropout(activation_fn(tf.matmul(input,W)+b),dropout)
     return output
 
-def masked_layer_norm(inp,mask):
-    floatmask=tf.cast(tf.expand_dims(mask,2),tf.float32)
-    num = tf.reduce_sum(tf.multiply(inp,floatmask),axis=[1], keep_dims=True)
-    den = tf.reduce_sum(floatmask,axis=1,keep_dims=True)
-    mean = tf.divide(num,den)
-    num = tf.reduce_sum(tf.multiply(tf.square(inp-mean),floatmask),axis=[1], keep_dims=True)
-    var = tf.divide(num,den)
-    variance_epsilon = 1e-12        
-    beta = tf.Variable(tf.constant(0.0, shape=[inp.get_shape().as_list()[-1]]))
-    gamma = tf.Variable(tf.constant(1.0, shape=[inp.get_shape().as_list()[-1]]))
-    norm = tf.nn.batch_normalization(
-        inp, mean, var,variance_epsilon=variance_epsilon,offset=beta,scale=gamma)
-    norm = tf.multiply(norm,floatmask)
-    return norm
+def masked_layer_norm(inp,mask,scope=''):
+    with tf.variable_scope('Layer_Norm'+scope):
+        floatmask=tf.cast(tf.expand_dims(mask,2),tf.float32)
+        inputdepth = inp.get_shape().as_list()[-1]
+        num = tf.reduce_sum(tf.multiply(inp,floatmask),axis=[1,2], keep_dims=True)
+        den = tf.multiply(tf.reduce_sum(floatmask,axis=1,keep_dims=True),inputdepth)
+        mean = tf.divide(num,den)
+        num = tf.reduce_sum(tf.multiply(tf.square(inp-mean),floatmask),axis=[1,2], keep_dims=True)
+        var = tf.divide(num,den)
+        variance_epsilon = 1e-12        
+        beta = tf.Variable(tf.constant(0.0, shape=[inputdepth]), trainable=True,name='beta')
+        gamma = tf.Variable(tf.constant(1.0, shape=[inputdepth]), trainable=True,name='Gamma')
+        norm = tf.nn.batch_normalization(
+            inp, mean, var,offset=beta,scale=gamma,variance_epsilon=variance_epsilon)
+        norm = tf.multiply(norm,floatmask)
+        return norm
 #-------------------------------------------------------------------------------
 #
 #       RESULTS ANALYSIS
