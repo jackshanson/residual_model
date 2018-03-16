@@ -3,8 +3,8 @@ import pandas as pd
 import jack_misc as jack
 import tensorflow as tf
 
-def Model(input,seq_lens,mask,dropout,num_outputs,is_train,args):
-    #def Model(input,seq_lens,mask,dropout,num_outputs,is_train,args)
+def Model(input,seq_lens,mask,ln_mask,dropout,num_outputs,is_train,args):
+    #def Model(input,seq_lens,mask,ln_mask,dropout,num_outputs,is_train,args)
     #   
     # all arguments are placeholders except for the class argument args, which
     # can be defined as either an argparse setup like so:
@@ -68,13 +68,12 @@ def Model(input,seq_lens,mask,dropout,num_outputs,is_train,args):
     else:
         norm_func = tf.identity
     model_layout = args.layout.split()
-    floatmask=tf.cast(tf.expand_dims(mask,2),tf.float32)
     for K,k in enumerate(model_layout):
         #-------------------RNN    
         if k == 'RNN':
             if args.model_res == True and K>0:
                 layer.append(tf.layers.conv1d(layer[-1],rnn_size*2,1,padding='SAME',activation=activation_fn))
-                layer.append(jack.masked_layer_norm(layer[-1],mask))
+                layer.append(jack.masked_layer_norm(layer[-1],ln_mask))
             for i in range(rnn_depth):
                 with tf.variable_scope('RNN'+str(i)):
                     if args.model_res == True:
@@ -82,12 +81,12 @@ def Model(input,seq_lens,mask,dropout,num_outputs,is_train,args):
                     if args.model_res == True and args.bottleneck == True:
                         with tf.variable_scope('bottleneck'+str(i)):
                             layer.append(tf.layers.conv1d(layer[-1],rnn_size,1,padding='SAME',activation=activation_fn))
-                            layer.append(jack.masked_layer_norm(layer[-1],mask))
+                            layer.append(jack.masked_layer_norm(layer[-1],ln_mask))
                     layer.append(jack.LSTM_layer(layer[-1],cellfunc,cell_args,rnn_size,seq_lens,False))
                     if args.model_res == True:
-                        layer.append(jack.masked_layer_norm(layer[-1],mask))
+                        layer.append(jack.masked_layer_norm(layer[-1],ln_mask))
                     else:
-                        layer.append(tf.nn.dropout(jack.masked_layer_norm(layer[-1],mask),dropout))
+                        layer.append(tf.nn.dropout(jack.masked_layer_norm(layer[-1],ln_mask),dropout))
                     if args.model_res == True and layer[-1].get_shape().as_list()[-1] == layer[res_start_layer].get_shape().as_list()[-1]:
                         with tf.variable_scope('ADDING_LAYER_'+str(res_start_layer)):
                             layer.append(layer[-1]+layer[res_start_layer])
@@ -100,14 +99,14 @@ def Model(input,seq_lens,mask,dropout,num_outputs,is_train,args):
                 if args.model_res == True and i%2 == 0:
                     res_start_layer = len(layer)-1
                 with tf.variable_scope('CNN'+str(i+1)):
-                    layer.append(jack.masked_layer_norm(activation_fn(layer[-1]),mask))
+                    layer.append(jack.masked_layer_norm(activation_fn(layer[-1]),ln_mask))
                     cnn_dim = filter_dims_pattern[i%(len(filter_dims_pattern))]
                     layer.append(tf.layers.conv1d(layer[-1],cnn_size,cnn_dim,padding='SAME',activation=None,bias_initializer=tf.constant_initializer(0.01)))
                     if i%2 == 1 and args.model_res:
                         with tf.variable_scope('ADDING_LAYER_'+str(res_start_layer)):
                             layer.append(layer[-1]+layer[res_start_layer])
             with tf.variable_scope('Output_conv_activation'):
-                layer.append(jack.masked_layer_norm(activation_fn(layer[-1]),mask))
+                layer.append(jack.masked_layer_norm(activation_fn(layer[-1]),ln_mask))
     #-------------------MASK
     layer.append(tf.boolean_mask(layer[-1],mask))
     #-------------------FC
